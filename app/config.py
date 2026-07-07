@@ -5,8 +5,16 @@ import os
 @dataclass(frozen=True)
 class Config:
     app_name: str = "Spot Orin Nano"
-    app_version: str = os.getenv("APP_VERSION", "v20260707g")
-    real_spot_mode: bool = os.getenv("SPOT_REAL_MODE", "false").lower() == "true"
+    app_version: str = os.getenv("APP_VERSION", "v20260707h")
+    spot_mode: str = os.getenv("SPOT_MODE", "real" if os.getenv("SPOT_REAL_MODE", "false").lower() == "true" else "fake").lower()
+    spot_host: str = os.getenv("SPOT_HOST", "")
+    spot_username: str = os.getenv("SPOT_USERNAME", "")
+    spot_password: str = os.getenv("SPOT_PASSWORD", "")
+    spot_enable_power_on: bool = os.getenv("SPOT_ENABLE_POWER_ON", "false").lower() == "true"
+    spot_command_timeout_s: float = float(os.getenv("SPOT_COMMAND_TIMEOUT_S", "10.0"))
+    spot_sdk_client_name: str = os.getenv("SPOT_SDK_CLIENT_NAME", "spot-orin-nano")
+    spot_real_allowed_commands: str = os.getenv("SPOT_REAL_ALLOWED_COMMANDS", "SIT,STAND,STOP")
+    real_spot_mode: bool = spot_mode == "real"
     camera_index: int = int(os.getenv("CAMERA_INDEX", "0"))
     camera_width: int = int(os.getenv("CAMERA_WIDTH", "640"))
     camera_height: int = int(os.getenv("CAMERA_HEIGHT", "480"))

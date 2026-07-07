@@ -16,6 +16,9 @@
       </div>
       <button class="stop" onclick="post('/api/stop')">STOPP</button>
     </section>
+    <section id="real_mode_warning" class="panel" style="display:none">
+      <strong>REAL SPOT MODE - only SIT/STAND/STOP enabled</strong>
+    </section>
 
     <section class="grid">
       <div class="panel video">
@@ -27,6 +30,16 @@
         <dl>
           <dt>Emergency stop</dt><dd id="emergency_stop">-</dd>
           <dt>Fake mode</dt><dd id="fake_spot_mode">-</dd>
+          <dt>Spot mode</dt><dd id="spot_mode">-</dd>
+          <dt>Spot available</dt><dd id="spot_real_available">-</dd>
+          <dt>Spot connected</dt><dd id="spot_connected">-</dd>
+          <dt>Spot host</dt><dd id="spot_host">-</dd>
+          <dt>Spot last error</dt><dd id="spot_last_error">-</dd>
+          <dt>Spot last action</dt><dd id="spot_last_action">-</dd>
+          <dt>Spot action status</dt><dd id="spot_last_action_status">-</dd>
+          <dt>Spot powered</dt><dd id="spot_powered_on">-</dd>
+          <dt>Spot estopped</dt><dd id="spot_estopped">-</dd>
+          <dt>Spot lease</dt><dd id="spot_lease_status">-</dd>
           <dt>Blue snake visible</dt><dd id="blue_snake_visible">-</dd>
           <dt>Blue snake stable</dt><dd id="blue_snake_stable">-</dd>
           <dt>Auto vision</dt><dd id="auto_vision_enabled">-</dd>
@@ -68,6 +81,7 @@
         <button onclick="command('ROTATE_RIGHT_SHORT')">RIGHT</button>
         <button onclick="command('BARK')">BARK</button>
         <button onclick="command('APPROACH_BLUE_SNAKE')">KOM</button>
+        <button onclick="post('/api/spot/connect')">SPOT CONNECT</button>
         <button onclick="post('/api/vision/analyze_once')">VISION</button>
         <button onclick="post('/api/vision/toggle_auto')">AUTO VISION</button>
         <button onclick="post('/api/audio/beep')">AUDIO BEEP</button>
@@ -135,9 +149,20 @@
       const status = await fetch("/api/status").then(r => r.json());
       setText("app_version", status.app_version);
       setText("mode", status.mode);
+      document.getElementById("real_mode_warning").style.display = status.spot_mode === "real" ? "block" : "none";
       for (const key of [
         "emergency_stop",
         "fake_spot_mode",
+        "spot_mode",
+        "spot_real_available",
+        "spot_connected",
+        "spot_host",
+        "spot_last_error",
+        "spot_last_action",
+        "spot_last_action_status",
+        "spot_powered_on",
+        "spot_estopped",
+        "spot_lease_status",
         "blue_snake_visible",
         "blue_snake_stable",
         "auto_vision_enabled",

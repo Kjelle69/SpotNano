@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from app import audio_out
 from app.config import config
 from app.logger import event_logger
-from app.spot_interface import FakeSpotInterface
+from app.spot_interface import FakeSpotInterface, SpotCommandError
 from app.state import SharedState, SystemMode
 
 
@@ -28,6 +28,8 @@ MOTION_COMMANDS = {
     "APPROACH_BLUE_SNAKE",
 }
 
+REAL_MODE_BLOCKED_MESSAGE = "Real Spot mode: command not enabled in this milestone"
+
 
 @dataclass
 class CommandResult:
@@ -46,7 +48,11 @@ class CommandManager:
     def emergency_stop(self, source: str = "unknown") -> CommandResult:
         self.state.update(emergency_stop=True, last_command="STOP", last_command_status="accepted")
         self.state.set_mode(SystemMode.STOPPED)
-        message = self.spot.stop()
+        try:
+            message = self.spot.stop()
+        except SpotCommandError as exc:
+            message = f"Emergency stop active locally; Spot STOP failed: {exc}"
+            event_logger.event("spot_stop_failed", source=source, error=str(exc))
         event_logger.event("emergency_stop", source=source)
         return CommandResult(True, "STOP", "accepted", message)
 
@@ -71,14 +77,14 @@ class CommandManager:
             self._record_result(result, now, source)
             return result
 
-        snapshot = self.state.snapshot()
-        if snapshot["emergency_stop"] and normalized in MOTION_COMMANDS | {"SIT", "STAND", "BARK"}:
-            result = CommandResult(False, normalized, "blocked", "Emergency stop is active")
+        if self._is_real_mode() and normalized not in self._real_allowed_commands():
+            result = CommandResult(False, normalized, "blocked", REAL_MODE_BLOCKED_MESSAGE)
             self._record_result(result, now, source)
             return result
 
-        if config.real_spot_mode:
-            result = CommandResult(False, normalized, "blocked", "Real Spot mode is not implemented yet")
+        snapshot = self.state.snapshot()
+        if snapshot["emergency_stop"] and normalized in MOTION_COMMANDS | {"SIT", "STAND", "BARK"}:
+            result = CommandResult(False, normalized, "blocked", "Emergency stop is active")
             self._record_result(result, now, source)
             return result
 
@@ -87,22 +93,16 @@ class CommandManager:
             self._record_result(result, now, source)
             return result
 
-        result = self._execute(normalized)
+        try:
+            result = self._execute(normalized)
+        except SpotCommandError as exc:
+            result = CommandResult(False, normalized, "blocked", str(exc))
         if normalized in MOTION_COMMANDS:
             self._last_motion_time = now
         self._record_result(result, now, source)
         return result
 
     def _execute(self, command: str) -> CommandResult:
-        actions = {
-            "SIT": self.spot.sit,
-            "STAND": self.spot.stand,
-            "MOVE_FORWARD_SHORT": self.spot.move_forward_short,
-            "MOVE_BACKWARD_SHORT": self.spot.move_backward_short,
-            "ROTATE_LEFT_SHORT": self.spot.rotate_left_short,
-            "ROTATE_RIGHT_SHORT": self.spot.rotate_right_short,
-            "BARK": self.spot.bark,
-        }
         if command == "APPROACH_BLUE_SNAKE":
             snapshot = self.state.snapshot()
             if not snapshot["blue_snake_stable"]:
@@ -110,7 +110,16 @@ class CommandManager:
             self.state.set_mode(SystemMode.APPROACHING_SNAKE)
             return CommandResult(True, command, "accepted", self.spot.approach_blue_snake_step())
 
-        action = actions[command]
+        action_name = {
+            "SIT": "sit",
+            "STAND": "stand",
+            "MOVE_FORWARD_SHORT": "move_forward_short",
+            "MOVE_BACKWARD_SHORT": "move_backward_short",
+            "ROTATE_LEFT_SHORT": "rotate_left_short",
+            "ROTATE_RIGHT_SHORT": "rotate_right_short",
+            "BARK": "bark",
+        }[command]
+        action = getattr(self.spot, action_name)
         return CommandResult(True, command, "accepted", action())
 
     def _record_result(self, result: CommandResult, now: float, source: str) -> None:
@@ -137,3 +146,9 @@ class CommandManager:
             audio_out.bark_ok()
         elif result.status == "blocked":
             audio_out.bark_no()
+
+    def _is_real_mode(self) -> bool:
+        return bool(getattr(self.spot, "is_real", False))
+
+    def _real_allowed_commands(self) -> set[str]:
+        return {item.strip().upper() for item in config.spot_real_allowed_commands.split(",") if item.strip()}

@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 from app.audio_in import parse_voice_command, start_audio_listener, stop_audio_listener
 from app.camera import camera
 from app.config import config
-from app.web_server import auto_vision_service, command_manager, router, shared_state
+from app.web_server import auto_vision_service, command_manager, router, shared_state, spot
 
 
 @asynccontextmanager
@@ -28,6 +28,7 @@ async def lifespan(app: FastAPI):
     stop_audio_listener()
     auto_vision_service.stop()
     camera.stop()
+    spot.close()
 
 
 app = FastAPI(title=config.app_name, lifespan=lifespan)

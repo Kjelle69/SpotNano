@@ -17,6 +17,16 @@ class SystemState:
     mode: SystemMode = SystemMode.IDLE
     emergency_stop: bool = False
     fake_spot_mode: bool = True
+    spot_mode: str = "fake"
+    spot_real_available: bool = False
+    spot_connected: bool = False
+    spot_host: str = ""
+    spot_last_error: str = ""
+    spot_last_action: str = ""
+    spot_last_action_status: str = ""
+    spot_powered_on: bool | None = None
+    spot_estopped: bool | None = None
+    spot_lease_status: str = ""
     blue_snake_visible: bool = False
     blue_snake_stable: bool = False
     last_vision_raw: str = ""

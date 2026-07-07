@@ -11,14 +11,14 @@ from app.camera import camera
 from app.command_manager import CommandManager
 from app.config import config
 from app.logger import event_logger
-from app.spot_interface import FakeSpotInterface
+from app.spot_interface import create_spot_interface
 from app.state import shared_state
 from app.vision_moondream import VisionService
 
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
-spot = FakeSpotInterface(shared_state)
+spot = create_spot_interface(shared_state)
 command_manager = CommandManager(shared_state, spot)
 vision_service = VisionService(camera)
 auto_vision_service = AutoVisionService(shared_state, vision_service)
@@ -49,7 +49,21 @@ def api_status() -> dict:
     status["audio_input_enabled"] = config.audio_in_enabled
     status["audio_in_backend"] = config.audio_in_backend
     status["bark_sounds"] = audio_out.bark_sound_status()
+    status.update(spot.status())
     return status
+
+
+@router.get("/api/spot/status")
+def api_spot_status() -> dict:
+    return spot.status()
+
+
+@router.post("/api/spot/connect")
+def api_spot_connect() -> JSONResponse:
+    if not getattr(spot, "is_real", False):
+        return JSONResponse({"accepted": False, "status": "fake_mode", **spot.status()})
+    result = spot.connect()
+    return JSONResponse({"accepted": bool(result.get("spot_connected")), "status": "connected" if result.get("spot_connected") else "unavailable", **result})
 
 
 @router.get("/api/logs")
