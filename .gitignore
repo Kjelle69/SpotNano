@@ -1,0 +1,8 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.env
+logs/*.log
+logs/*.jsonl
+logs/latest_vision_frame.jpg

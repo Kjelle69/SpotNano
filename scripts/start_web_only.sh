@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export CAMERA_INDEX="${CAMERA_INDEX:-0}"
+export CAMERA_WIDTH="${CAMERA_WIDTH:-640}"
+export CAMERA_HEIGHT="${CAMERA_HEIGHT:-480}"
+export CAMERA_FPS="${CAMERA_FPS:-8}"
+export MJPEG_FPS="${MJPEG_FPS:-6}"
+export CAMERA_JPEG_QUALITY="${CAMERA_JPEG_QUALITY:-65}"
+export AUDIO_IN_ENABLED="${AUDIO_IN_ENABLED:-false}"
+export VISION_ENABLED="${VISION_ENABLED:-false}"
+export AUTO_VISION_ENABLED="${AUTO_VISION_ENABLED:-false}"
+
+exec "$(dirname "${BASH_SOURCE[0]}")/_run_profile.sh"

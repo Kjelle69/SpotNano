@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Spot Orin Nano</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <main class="shell">
+    <section class="topbar">
+      <div>
+        <h1>Spot Orin Nano</h1>
+        <p id="app_version">VERSION</p>
+        <p id="mode">STATE</p>
+      </div>
+      <button class="stop" onclick="post('/api/stop')">STOPP</button>
+    </section>
+
+    <section class="grid">
+      <div class="panel video">
+        <img src="/video_feed" alt="Live camera feed">
+      </div>
+
+      <div class="panel status">
+        <h2>Status</h2>
+        <dl>
+          <dt>Emergency stop</dt><dd id="emergency_stop">-</dd>
+          <dt>Fake mode</dt><dd id="fake_spot_mode">-</dd>
+          <dt>Blue snake visible</dt><dd id="blue_snake_visible">-</dd>
+          <dt>Blue snake stable</dt><dd id="blue_snake_stable">-</dd>
+          <dt>Auto vision</dt><dd id="auto_vision_enabled">-</dd>
+          <dt>Auto interval</dt><dd id="auto_vision_interval_s">-</dd>
+          <dt>Last auto vision</dt><dd id="last_auto_vision_time">-</dd>
+          <dt>Vision raw</dt><dd id="last_vision_raw">-</dd>
+          <dt>Vision duration</dt><dd id="last_vision_duration_s">-</dd>
+          <dt>Last command</dt><dd id="last_command">-</dd>
+          <dt>Command status</dt><dd id="last_command_status">-</dd>
+          <dt>Last audio</dt><dd id="last_audio_phrase">-</dd>
+          <dt>Parsed voice</dt><dd id="last_parsed_voice_command">-</dd>
+          <dt>Audio input</dt><dd id="audio_input_enabled">-</dd>
+          <dt>Audio device</dt><dd id="audio_input_device">-</dd>
+          <dt>Audio device name</dt><dd id="audio_input_device_name">-</dd>
+          <dt>Audio sample rate</dt><dd id="audio_input_requested_samplerate">-</dd>
+          <dt>Audio RMS</dt><dd id="last_audio_rms">-</dd>
+          <dt>Audio peak</dt><dd id="last_audio_peak">-</dd>
+          <dt>Audio activity</dt><dd id="audio_activity_active">-</dd>
+          <dt>Audio queue</dt><dd id="audio_queue_length">-</dd>
+          <dt>Inference owner</dt><dd id="inference_owner">-</dd>
+          <dt>Auto vision skip</dt><dd id="last_auto_vision_skip_reason">-</dd>
+          <dt>Vision cancel</dt><dd id="last_vision_cancel_reason">-</dd>
+          <dt>Bark OK file</dt><dd id="bark_sound_ok">-</dd>
+          <dt>Bark NO file</dt><dd id="bark_sound_no">-</dd>
+          <dt>Bark WARN file</dt><dd id="bark_sound_warn">-</dd>
+          <dt>Bark snake file</dt><dd id="bark_sound_snake">-</dd>
+        </dl>
+      </div>
+    </section>
+
+    <section class="panel commands">
+      <h2>Commands</h2>
+      <div class="buttons">
+        <button onclick="command('SIT')">SIT</button>
+        <button onclick="command('STAND')">STAND</button>
+        <button onclick="command('MOVE_FORWARD_SHORT')">FORWARD</button>
+        <button onclick="command('MOVE_BACKWARD_SHORT')">BACK</button>
+        <button onclick="command('ROTATE_LEFT_SHORT')">LEFT</button>
+        <button onclick="command('ROTATE_RIGHT_SHORT')">RIGHT</button>
+        <button onclick="command('BARK')">BARK</button>
+        <button onclick="command('APPROACH_BLUE_SNAKE')">KOM</button>
+        <button onclick="post('/api/vision/analyze_once')">VISION</button>
+        <button onclick="post('/api/vision/toggle_auto')">AUTO VISION</button>
+        <button onclick="post('/api/audio/beep')">AUDIO BEEP</button>
+        <button onclick="post('/api/audio/bark')">AUDIO VOFF</button>
+        <button onclick="post('/api/audio/bark_ok')">BARK OK</button>
+        <button onclick="post('/api/audio/bark_no')">BARK NO</button>
+        <button onclick="post('/api/audio/bark_warn')">BARK WARN</button>
+        <button onclick="post('/api/audio/bark_snake')">BARK SNAKE</button>
+        <button onclick="post('/api/audio/mic_test')">MIC TEST 3S</button>
+        <button onclick="sayBlueSnake()">SAY BLUE SNAKE</button>
+        <button onclick="post('/api/reset_stop')">RESET STOP</button>
+      </div>
+      <div class="voice-test">
+        <input id="voice_text" type="text" placeholder="spot sitt" autocomplete="off">
+        <button onclick="sendVoiceText()">SEND VOICE TEXT</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Recent Logs</h2>
+      <pre id="logs"></pre>
+    </section>
+  </main>
+
+  <script>
+    async function post(url, body) {
+      const options = { method: "POST" };
+      if (body) {
+        options.body = body;
+      }
+      await fetch(url, options);
+      await refresh();
+    }
+
+    async function command(value) {
+      const body = new FormData();
+      body.append("command", value);
+      await post("/api/command", body);
+    }
+
+    async function sayBlueSnake() {
+      await fetch("/api/audio/say", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: "Jag ser den blå ormen" })
+      });
+      await refresh();
+    }
+
+    async function sendVoiceText() {
+      const input = document.getElementById("voice_text");
+      await fetch("/api/audio/voice_text", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: input.value })
+      });
+      await refresh();
+    }
+
+    function setText(id, value) {
+      document.getElementById(id).textContent = String(value ?? "-");
+    }
+
+    async function refresh() {
+      const status = await fetch("/api/status").then(r => r.json());
+      setText("app_version", status.app_version);
+      setText("mode", status.mode);
+      for (const key of [
+        "emergency_stop",
+        "fake_spot_mode",
+        "blue_snake_visible",
+        "blue_snake_stable",
+        "auto_vision_enabled",
+        "auto_vision_interval_s",
+        "last_auto_vision_time",
+        "last_vision_raw",
+        "last_vision_duration_s",
+        "last_command",
+        "last_command_status",
+        "last_audio_phrase",
+        "last_parsed_voice_command",
+        "audio_input_enabled",
+        "audio_input_device",
+        "audio_input_device_name",
+        "audio_input_requested_samplerate",
+        "last_audio_rms",
+        "last_audio_peak",
+        "audio_activity_active",
+        "audio_queue_length",
+        "inference_owner",
+        "last_auto_vision_skip_reason",
+        "last_vision_cancel_reason"
+      ]) {
+        setText(key, status[key]);
+      }
+      setText("bark_sound_ok", status.bark_sounds?.BarkOneTime);
+      setText("bark_sound_no", status.bark_sounds?.BarkTwoTimes);
+      setText("bark_sound_warn", status.bark_sounds?.BarkThreeTimes);
+      setText("bark_sound_snake", status.bark_sounds?.BarkSnake);
+
+      const logs = await fetch("/api/logs").then(r => r.json());
+      document.getElementById("logs").textContent = logs.logs
+        .slice(-20)
+        .map(item => `${new Date(item.time * 1000).toLocaleTimeString()} ${item.type} ${JSON.stringify(item)}`)
+        .join("\n");
+    }
+
+    refresh();
+    setInterval(refresh, 1000);
+  </script>
+</body>
+</html>
