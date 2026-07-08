@@ -12,6 +12,9 @@ ALLOWED_COMMANDS = {
     "SIT",
     "STAND",
     "STOP",
+    "APP_ESTOP",
+    "MOTION_STOP",
+    "POWER_OFF",
     "MOVE_FORWARD_SHORT",
     "MOVE_BACKWARD_SHORT",
     "ROTATE_LEFT_SHORT",
@@ -46,7 +49,7 @@ class CommandManager:
         self._last_motion_time = 0.0
 
     def emergency_stop(self, source: str = "unknown") -> CommandResult:
-        self.state.update(emergency_stop=True, last_command="STOP", last_command_status="accepted")
+        self.state.update(emergency_stop=True, stop_state="app_estop", last_command="APP_ESTOP", last_command_status="accepted")
         self.state.set_mode(SystemMode.STOPPED)
         try:
             message = self.spot.stop()
@@ -54,10 +57,20 @@ class CommandManager:
             message = f"Emergency stop active locally; Spot STOP failed: {exc}"
             event_logger.event("spot_stop_failed", source=source, error=str(exc))
         event_logger.event("emergency_stop", source=source)
-        return CommandResult(True, "STOP", "accepted", message)
+        return CommandResult(True, "APP_ESTOP", "accepted", message)
+
+    def motion_stop(self, source: str = "unknown") -> CommandResult:
+        self.state.update(emergency_stop=False, stop_state="motion_stop", last_command="MOTION_STOP", last_command_status="accepted")
+        try:
+            message = self.spot.stop()
+        except SpotCommandError as exc:
+            message = f"Motion stop requested locally; Spot STOP failed: {exc}"
+            event_logger.event("spot_motion_stop_failed", source=source, error=str(exc))
+        event_logger.event("motion_stop", source=source)
+        return CommandResult(True, "MOTION_STOP", "accepted", message)
 
     def reset_stop(self) -> CommandResult:
-        self.state.update(emergency_stop=False, last_command="RESET_STOP", last_command_status="accepted")
+        self.state.update(emergency_stop=False, stop_state="clear", last_command="RESET_STOP", last_command_status="accepted")
         self.state.set_mode(SystemMode.IDLE)
         self.state.append_command_log("RESET STOP")
         event_logger.event("reset_stop")
@@ -65,10 +78,17 @@ class CommandManager:
 
     def handle(self, command: str, source: str = "web") -> CommandResult:
         normalized = command.strip().upper()
+        if normalized == "STOP":
+            normalized = "APP_ESTOP"
         now = time.time()
 
-        if normalized == "STOP":
+        if normalized == "APP_ESTOP":
             result = self.emergency_stop(source)
+            self._record_result(result, now, source)
+            return result
+
+        if normalized == "MOTION_STOP":
+            result = self.motion_stop(source)
             self._record_result(result, now, source)
             return result
 
@@ -103,6 +123,9 @@ class CommandManager:
         return result
 
     def _execute(self, command: str) -> CommandResult:
+        if command in {"APP_ESTOP", "MOTION_STOP"}:
+            return CommandResult(True, command, "accepted", self.spot.stop())
+
         if command == "APPROACH_BLUE_SNAKE":
             snapshot = self.state.snapshot()
             if not snapshot["blue_snake_stable"]:
@@ -113,6 +136,7 @@ class CommandManager:
         action_name = {
             "SIT": "sit",
             "STAND": "stand",
+            "POWER_OFF": "power_off",
             "MOVE_FORWARD_SHORT": "move_forward_short",
             "MOVE_BACKWARD_SHORT": "move_backward_short",
             "ROTATE_LEFT_SHORT": "rotate_left_short",
@@ -123,11 +147,14 @@ class CommandManager:
         return CommandResult(True, command, "accepted", action())
 
     def _record_result(self, result: CommandResult, now: float, source: str) -> None:
-        self.state.update(
+        updates = dict(
             last_command=result.command,
             last_command_status=result.status,
             last_command_time=now,
         )
+        if result.accepted:
+            updates["last_accepted_command"] = result.command
+        self.state.update(**updates)
         self.state.append_command_log(f"{result.status.upper()} {result.command}: {result.message}")
         event_logger.event(
             "command",
@@ -140,7 +167,7 @@ class CommandManager:
         self._play_audio_feedback(result)
 
     def _play_audio_feedback(self, result: CommandResult) -> None:
-        if result.accepted and result.command == "STOP":
+        if result.accepted and result.command == "APP_ESTOP":
             audio_out.bark_warn()
         elif result.accepted:
             audio_out.bark_ok()

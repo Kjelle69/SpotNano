@@ -14,90 +14,153 @@
         <p id="app_version">VERSION</p>
         <p id="mode">STATE</p>
       </div>
-      <button class="stop" onclick="post('/api/stop')">STOPP</button>
+      <button class="stop" onclick="post('/api/stop')">APP E-STOP</button>
     </section>
     <section id="real_mode_warning" class="panel" style="display:none">
-      <strong>REAL SPOT MODE - only SIT/STAND/STOP enabled</strong>
+      <strong>REAL SPOT MODE - posture safe mode. Joysticks are disabled unless explicitly enabled.</strong>
     </section>
 
-    <section class="grid">
-      <div class="panel video">
-        <img src="/video_feed" alt="Live camera feed">
+    <section class="dashboard-grid">
+      <div class="main-column">
+        <div class="panel video">
+          <img src="/video_feed" alt="Live camera feed">
+        </div>
+
+        <div class="ai-grid">
+          <section class="panel ai-panel">
+            <h2>AI Vision</h2>
+            <dl>
+              <dt>Blue snake visible</dt><dd id="blue_snake_visible">-</dd>
+              <dt>Blue snake stable</dt><dd id="blue_snake_stable">-</dd>
+              <dt>Auto vision</dt><dd id="auto_vision_enabled">-</dd>
+              <dt>Auto interval</dt><dd id="auto_vision_interval_s">-</dd>
+              <dt>Last auto vision</dt><dd id="last_auto_vision_time">-</dd>
+              <dt>Vision duration</dt><dd id="last_vision_duration_s">-</dd>
+              <dt>Auto vision skip</dt><dd id="last_auto_vision_skip_reason">-</dd>
+              <dt>Vision cancel</dt><dd id="last_vision_cancel_reason">-</dd>
+              <dt>Vision raw</dt><dd id="last_vision_raw">-</dd>
+            </dl>
+          </section>
+
+          <section class="panel ai-panel">
+            <h2>AI Whisper</h2>
+            <dl>
+              <dt>Audio input</dt><dd id="audio_input_enabled">-</dd>
+              <dt>Audio channels</dt><dd id="audio_channels">-</dd>
+              <dt>Audio device</dt><dd id="audio_input_device">-</dd>
+              <dt>Audio device name</dt><dd id="audio_input_device_name">-</dd>
+              <dt>Audio sample rate</dt><dd id="audio_input_requested_samplerate">-</dd>
+              <dt>Audio RMS</dt><dd id="last_audio_rms">-</dd>
+              <dt>Audio peak</dt><dd id="last_audio_peak">-</dd>
+              <dt>Left RMS</dt><dd id="audio_left_rms">-</dd>
+              <dt>Right RMS</dt><dd id="audio_right_rms">-</dd>
+              <dt>Left peak</dt><dd id="audio_peak_left">-</dd>
+              <dt>Right peak</dt><dd id="audio_peak_right">-</dd>
+              <dt>LR dB</dt><dd id="audio_lr_db">-</dd>
+              <dt>Audio activity</dt><dd id="audio_activity_active">-</dd>
+              <dt>Audio queue</dt><dd id="audio_queue_length">-</dd>
+              <dt>Direction</dt><dd id="audio_direction">-</dd>
+              <dt>Confidence</dt><dd id="audio_direction_confidence">-</dd>
+              <dt>Last audio</dt><dd id="last_audio_phrase">-</dd>
+              <dt>Recognized phrase</dt><dd id="last_recognized_phrase">-</dd>
+              <dt>Parsed voice</dt><dd id="last_parsed_voice_command">-</dd>
+              <dt>Reject reason</dt><dd id="last_rejected_voice_reason">-</dd>
+              <dt>Inference owner</dt><dd id="inference_owner">-</dd>
+            </dl>
+            <div class="direction-meter" aria-label="Audio direction from Spot">
+              <div class="direction-scale">
+                <span>L</span>
+                <span>C</span>
+                <span>R</span>
+              </div>
+              <div class="direction-track">
+                <div class="direction-needle" id="audio_direction_needle"></div>
+              </div>
+              <p id="audio_direction_readout">quiet</p>
+            </div>
+          </section>
+        </div>
+
+        <section class="panel controls">
+          <h2>Controls</h2>
+          <div class="buttons">
+            <button data-command="SIT" onclick="sendCommand('SIT')">SIT</button>
+            <button data-command="STAND" onclick="sendCommand('STAND')">STAND</button>
+            <button data-command="POWER_OFF" onclick="sendCommand('POWER_OFF')">POWER OFF</button>
+            <button data-command="MOTION_STOP" onclick="post('/api/motion_stop')">MOTION STOP</button>
+            <button data-command="MOVE_FORWARD_SHORT" onclick="sendCommand('MOVE_FORWARD_SHORT')">FORWARD</button>
+            <button data-command="MOVE_BACKWARD_SHORT" onclick="sendCommand('MOVE_BACKWARD_SHORT')">BACK</button>
+            <button data-command="ROTATE_LEFT_SHORT" onclick="sendCommand('ROTATE_LEFT_SHORT')">LEFT</button>
+            <button data-command="ROTATE_RIGHT_SHORT" onclick="sendCommand('ROTATE_RIGHT_SHORT')">RIGHT</button>
+            <button data-command="BARK" onclick="sendCommand('BARK')">BARK</button>
+            <button data-command="APPROACH_BLUE_SNAKE" onclick="sendCommand('APPROACH_BLUE_SNAKE')">KOM</button>
+            <button onclick="post('/api/spot/connect')">SPOT CONNECT</button>
+            <button onclick="post('/api/vision/analyze_once')">VISION</button>
+            <button onclick="post('/api/vision/toggle_auto')">AUTO VISION</button>
+            <button onclick="post('/api/audio/beep')">AUDIO BEEP</button>
+            <button onclick="post('/api/audio/bark')">AUDIO VOFF</button>
+            <button onclick="post('/api/audio/bark_ok')">BARK OK</button>
+            <button onclick="post('/api/audio/bark_no')">BARK NO</button>
+            <button onclick="post('/api/audio/bark_warn')">BARK WARN</button>
+            <button onclick="post('/api/audio/bark_snake')">BARK SNAKE</button>
+            <button onclick="post('/api/audio/mic_test')">MIC TEST 3S</button>
+            <button onclick="sayBlueSnake()">SAY BLUE SNAKE</button>
+            <button onclick="post('/api/reset_stop')">RESET STOP</button>
+          </div>
+
+          <div class="joystick-grid">
+            <div class="joystick-card">
+              <h2>Move</h2>
+              <div class="joystick" id="move_joystick" data-mode="move">
+                <div class="joystick-knob"></div>
+              </div>
+              <p id="move_joystick_value">0 / 0</p>
+            </div>
+            <div class="joystick-card">
+              <h2>Turn</h2>
+              <div class="joystick" id="turn_joystick" data-mode="turn">
+                <div class="joystick-knob"></div>
+              </div>
+              <p id="turn_joystick_value">0 / 0</p>
+            </div>
+          </div>
+
+          <div class="voice-test">
+            <input id="voice_text" type="text" placeholder="spot sit" autocomplete="off">
+            <button onclick="sendVoiceText()">SEND VOICE TEXT</button>
+          </div>
+        </section>
       </div>
 
-      <div class="panel status">
-        <h2>Status</h2>
+      <aside class="panel status">
+        <h2>Robot Status</h2>
         <dl>
           <dt>Emergency stop</dt><dd id="emergency_stop">-</dd>
+          <dt>Stop state</dt><dd id="stop_state">-</dd>
           <dt>Fake mode</dt><dd id="fake_spot_mode">-</dd>
           <dt>Spot mode</dt><dd id="spot_mode">-</dd>
           <dt>Spot available</dt><dd id="spot_real_available">-</dd>
           <dt>Spot connected</dt><dd id="spot_connected">-</dd>
           <dt>Spot host</dt><dd id="spot_host">-</dd>
+          <dt>Real allowed</dt><dd id="spot_real_allowed_commands">-</dd>
+          <dt>Joystick enabled</dt><dd id="spot_real_enable_joystick">-</dd>
           <dt>Spot last error</dt><dd id="spot_last_error">-</dd>
           <dt>Spot last action</dt><dd id="spot_last_action">-</dd>
           <dt>Spot action status</dt><dd id="spot_last_action_status">-</dd>
           <dt>Spot powered</dt><dd id="spot_powered_on">-</dd>
           <dt>Spot estopped</dt><dd id="spot_estopped">-</dd>
           <dt>Spot lease</dt><dd id="spot_lease_status">-</dd>
-          <dt>Blue snake visible</dt><dd id="blue_snake_visible">-</dd>
-          <dt>Blue snake stable</dt><dd id="blue_snake_stable">-</dd>
-          <dt>Auto vision</dt><dd id="auto_vision_enabled">-</dd>
-          <dt>Auto interval</dt><dd id="auto_vision_interval_s">-</dd>
-          <dt>Last auto vision</dt><dd id="last_auto_vision_time">-</dd>
-          <dt>Vision raw</dt><dd id="last_vision_raw">-</dd>
-          <dt>Vision duration</dt><dd id="last_vision_duration_s">-</dd>
+          <dt>Spot battery</dt><dd id="spot_battery_percentage">-</dd>
+          <dt>Battery status</dt><dd id="spot_battery_status">-</dd>
           <dt>Last command</dt><dd id="last_command">-</dd>
           <dt>Command status</dt><dd id="last_command_status">-</dd>
-          <dt>Last audio</dt><dd id="last_audio_phrase">-</dd>
-          <dt>Parsed voice</dt><dd id="last_parsed_voice_command">-</dd>
-          <dt>Audio input</dt><dd id="audio_input_enabled">-</dd>
-          <dt>Audio device</dt><dd id="audio_input_device">-</dd>
-          <dt>Audio device name</dt><dd id="audio_input_device_name">-</dd>
-          <dt>Audio sample rate</dt><dd id="audio_input_requested_samplerate">-</dd>
-          <dt>Audio RMS</dt><dd id="last_audio_rms">-</dd>
-          <dt>Audio peak</dt><dd id="last_audio_peak">-</dd>
-          <dt>Audio activity</dt><dd id="audio_activity_active">-</dd>
-          <dt>Audio queue</dt><dd id="audio_queue_length">-</dd>
-          <dt>Inference owner</dt><dd id="inference_owner">-</dd>
-          <dt>Auto vision skip</dt><dd id="last_auto_vision_skip_reason">-</dd>
-          <dt>Vision cancel</dt><dd id="last_vision_cancel_reason">-</dd>
+          <dt>Last accepted command</dt><dd id="last_accepted_command">-</dd>
           <dt>Bark OK file</dt><dd id="bark_sound_ok">-</dd>
           <dt>Bark NO file</dt><dd id="bark_sound_no">-</dd>
           <dt>Bark WARN file</dt><dd id="bark_sound_warn">-</dd>
           <dt>Bark snake file</dt><dd id="bark_sound_snake">-</dd>
         </dl>
-      </div>
-    </section>
-
-    <section class="panel commands">
-      <h2>Commands</h2>
-      <div class="buttons">
-        <button onclick="command('SIT')">SIT</button>
-        <button onclick="command('STAND')">STAND</button>
-        <button onclick="command('MOVE_FORWARD_SHORT')">FORWARD</button>
-        <button onclick="command('MOVE_BACKWARD_SHORT')">BACK</button>
-        <button onclick="command('ROTATE_LEFT_SHORT')">LEFT</button>
-        <button onclick="command('ROTATE_RIGHT_SHORT')">RIGHT</button>
-        <button onclick="command('BARK')">BARK</button>
-        <button onclick="command('APPROACH_BLUE_SNAKE')">KOM</button>
-        <button onclick="post('/api/spot/connect')">SPOT CONNECT</button>
-        <button onclick="post('/api/vision/analyze_once')">VISION</button>
-        <button onclick="post('/api/vision/toggle_auto')">AUTO VISION</button>
-        <button onclick="post('/api/audio/beep')">AUDIO BEEP</button>
-        <button onclick="post('/api/audio/bark')">AUDIO VOFF</button>
-        <button onclick="post('/api/audio/bark_ok')">BARK OK</button>
-        <button onclick="post('/api/audio/bark_no')">BARK NO</button>
-        <button onclick="post('/api/audio/bark_warn')">BARK WARN</button>
-        <button onclick="post('/api/audio/bark_snake')">BARK SNAKE</button>
-        <button onclick="post('/api/audio/mic_test')">MIC TEST 3S</button>
-        <button onclick="sayBlueSnake()">SAY BLUE SNAKE</button>
-        <button onclick="post('/api/reset_stop')">RESET STOP</button>
-      </div>
-      <div class="voice-test">
-        <input id="voice_text" type="text" placeholder="spot sitt" autocomplete="off">
-        <button onclick="sendVoiceText()">SEND VOICE TEXT</button>
-      </div>
+      </aside>
     </section>
 
     <section class="panel">
@@ -107,6 +170,25 @@
   </main>
 
   <script>
+    let latestStatus = {};
+
+    function realAllowedSet() {
+      return new Set(String(latestStatus.spot_real_allowed_commands || "")
+        .split(",")
+        .map(item => item.trim().toUpperCase())
+        .filter(Boolean));
+    }
+
+    function commandIsAllowedInUi(commandName) {
+      const commandText = String(commandName || "").toUpperCase();
+      if (latestStatus.spot_mode === "real") {
+        const allowed = realAllowedSet();
+        if (allowed.size && !allowed.has(commandText)) return false;
+        if (latestStatus.emergency_stop === true && !["POWER_OFF", "APP_ESTOP", "MOTION_STOP"].includes(commandText)) return false;
+      }
+      return true;
+    }
+
     async function post(url, body) {
       const options = { method: "POST" };
       if (body) {
@@ -116,10 +198,17 @@
       await refresh();
     }
 
-    async function command(value) {
-      const body = new FormData();
-      body.append("command", value);
-      await post("/api/command", body);
+    async function sendCommand(value) {
+      if (!commandIsAllowedInUi(value)) {
+        console.warn("Blocked by UI safety guard", value, latestStatus);
+        return;
+      }
+      await fetch("/api/command_json", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ command: value })
+      });
+      await refresh();
     }
 
     async function sayBlueSnake() {
@@ -145,24 +234,53 @@
       document.getElementById(id).textContent = String(value ?? "-");
     }
 
+    function updateCommandButtons(status) {
+      const allowed = new Set(String(status.spot_real_allowed_commands || "")
+        .split(",")
+        .map(item => item.trim().toUpperCase())
+        .filter(Boolean));
+      const realMode = status.spot_mode === "real";
+      const appEstop = status.emergency_stop === true;
+      document.querySelectorAll("button[data-command]").forEach(button => {
+        const cmd = String(button.dataset.command || "").toUpperCase();
+        let disabled = false;
+        if (realMode && allowed.size && !allowed.has(cmd)) disabled = true;
+        if (realMode && appEstop && !["POWER_OFF", "APP_ESTOP", "MOTION_STOP"].includes(cmd)) disabled = true;
+        button.disabled = disabled;
+        button.title = disabled ? "Blocked in current real-mode safety state" : "";
+      });
+      document.querySelectorAll(".joystick").forEach(element => {
+        const joystickAllowed = realMode
+          ? status.spot_real_enable_joystick === true && (allowed.has("ROTATE_LEFT_SHORT") || allowed.has("ROTATE_RIGHT_SHORT") || allowed.has("MOVE_FORWARD_SHORT") || allowed.has("MOVE_BACKWARD_SHORT"))
+          : true;
+        element.classList.toggle("disabled", !joystickAllowed);
+      });
+    }
+
     async function refresh() {
       const status = await fetch("/api/status").then(r => r.json());
+      latestStatus = status;
       setText("app_version", status.app_version);
       setText("mode", status.mode);
       document.getElementById("real_mode_warning").style.display = status.spot_mode === "real" ? "block" : "none";
       for (const key of [
         "emergency_stop",
+        "stop_state",
         "fake_spot_mode",
         "spot_mode",
         "spot_real_available",
         "spot_connected",
         "spot_host",
+        "spot_real_allowed_commands",
+        "spot_real_enable_joystick",
         "spot_last_error",
         "spot_last_action",
         "spot_last_action_status",
         "spot_powered_on",
         "spot_estopped",
         "spot_lease_status",
+        "spot_battery_percentage",
+        "spot_battery_status",
         "blue_snake_visible",
         "blue_snake_stable",
         "auto_vision_enabled",
@@ -172,14 +290,25 @@
         "last_vision_duration_s",
         "last_command",
         "last_command_status",
+        "last_accepted_command",
         "last_audio_phrase",
+        "last_recognized_phrase",
         "last_parsed_voice_command",
+        "last_rejected_voice_reason",
+        "audio_channels",
         "audio_input_enabled",
         "audio_input_device",
         "audio_input_device_name",
         "audio_input_requested_samplerate",
         "last_audio_rms",
         "last_audio_peak",
+        "audio_left_rms",
+        "audio_right_rms",
+        "audio_peak_left",
+        "audio_peak_right",
+        "audio_lr_db",
+        "audio_direction",
+        "audio_direction_confidence",
         "audio_activity_active",
         "audio_queue_length",
         "inference_owner",
@@ -192,6 +321,8 @@
       setText("bark_sound_no", status.bark_sounds?.BarkTwoTimes);
       setText("bark_sound_warn", status.bark_sounds?.BarkThreeTimes);
       setText("bark_sound_snake", status.bark_sounds?.BarkSnake);
+      updateCommandButtons(status);
+      updateAudioDirectionMeter(status);
 
       const logs = await fetch("/api/logs").then(r => r.json());
       document.getElementById("logs").textContent = logs.logs
@@ -200,8 +331,84 @@
         .join("\n");
     }
 
+    function updateAudioDirectionMeter(status) {
+      const needle = document.getElementById("audio_direction_needle");
+      const readout = document.getElementById("audio_direction_readout");
+      const direction = String(status.audio_direction || "quiet");
+      const confidence = Number(status.audio_direction_confidence || 0);
+      const lrDb = Number(status.audio_lr_db || 0);
+      const clamped = Math.max(-12, Math.min(12, Number.isFinite(lrDb) ? lrDb : 0));
+      const pct = 50 + (clamped / 24) * 100;
+      needle.style.left = `${pct}%`;
+      readout.textContent = `${direction} ${Math.round(confidence * 100)}%`;
+    }
+
     refresh();
     setInterval(refresh, 1000);
+
+    function setupJoystick(elementId, valueId) {
+      const element = document.getElementById(elementId);
+      const knob = element.querySelector(".joystick-knob");
+      const value = document.getElementById(valueId);
+      const mode = element.dataset.mode;
+      let active = false;
+      let lastCommandAt = 0;
+
+      function update(clientX, clientY) {
+        const rect = element.getBoundingClientRect();
+        const radius = rect.width / 2;
+        const dx = clientX - (rect.left + radius);
+        const dy = clientY - (rect.top + radius);
+        const distance = Math.min(radius - 18, Math.hypot(dx, dy));
+        const angle = Math.atan2(dy, dx);
+        const x = Math.cos(angle) * distance;
+        const y = Math.sin(angle) * distance;
+        const nx = Math.round((x / (radius - 18)) * 100);
+        const ny = Math.round((-y / (radius - 18)) * 100);
+        knob.style.transform = `translate(${x}px, ${y}px)`;
+        value.textContent = `${nx} / ${ny}`;
+        maybeSendJoystickCommand(mode, nx, ny);
+      }
+
+      function reset() {
+        active = false;
+        knob.style.transform = "translate(0, 0)";
+        value.textContent = "0 / 0";
+      }
+
+      function maybeSendJoystickCommand(mode, x, y) {
+        if (latestStatus.spot_mode === "real" && latestStatus.spot_real_enable_joystick !== true) return;
+        const now = Date.now();
+        if (now - lastCommandAt < 700) return;
+        let next = "";
+        if (mode === "move") {
+          if (y > 55) next = "MOVE_FORWARD_SHORT";
+          if (y < -55) next = "MOVE_BACKWARD_SHORT";
+        } else {
+          if (x > 55) next = "ROTATE_RIGHT_SHORT";
+          if (x < -55) next = "ROTATE_LEFT_SHORT";
+        }
+        if (!next) return;
+        if (!commandIsAllowedInUi(next)) return;
+        lastCommandAt = now;
+        command(next);
+      }
+
+      element.addEventListener("pointerdown", event => {
+        active = true;
+        element.setPointerCapture(event.pointerId);
+        update(event.clientX, event.clientY);
+      });
+      element.addEventListener("pointermove", event => {
+        if (active) update(event.clientX, event.clientY);
+      });
+      element.addEventListener("pointerup", reset);
+      element.addEventListener("pointercancel", reset);
+      element.addEventListener("lostpointercapture", reset);
+    }
+
+    setupJoystick("move_joystick", "move_joystick_value");
+    setupJoystick("turn_joystick", "turn_joystick_value");
   </script>
 </body>
 </html>

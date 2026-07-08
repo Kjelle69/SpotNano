@@ -16,10 +16,10 @@ def test_demo_scripts_use_logitech_webcam_input_device():
     voice = open("scripts/start_voice_demo.sh", encoding="utf-8").read()
     full = open("scripts/start_full_demo.sh", encoding="utf-8").read()
 
-    assert 'AUDIO_DEVICE="${AUDIO_DEVICE:-24}"' in voice
-    assert 'AUDIO_DEVICE="${AUDIO_DEVICE:-24}"' in full
-    assert "AUDIO_DEVICE_MATCH" not in voice
-    assert "AUDIO_DEVICE_MATCH" not in full
+    assert 'AUDIO_DEVICE="${AUDIO_DEVICE:-auto}"' in voice
+    assert 'AUDIO_DEVICE_MATCH="${AUDIO_DEVICE_MATCH:-logitech}"' in voice
+    assert 'AUDIO_DEVICE="${AUDIO_DEVICE:-auto}"' in full
+    assert 'AUDIO_DEVICE_MATCH="${AUDIO_DEVICE_MATCH:-logitech}"' in full
 
 
 class FakeSoundDevice:
@@ -42,6 +42,10 @@ def test_audio_selected_device_diagnostics_populate_status(monkeypatch):
     assert status["audio_input_max_channels"] == 2
     assert status["audio_input_default_samplerate"] == 48000.0
     assert status["audio_input_requested_samplerate"] == config.audio_sample_rate
+
+
+def test_audio_device_match_selects_logitech_webcam():
+    assert audio_in._select_matching_input_device(FakeSoundDevice(), "logitech") == 1
 
 
 def test_mic_test_endpoint_returns_rms_peak(monkeypatch):

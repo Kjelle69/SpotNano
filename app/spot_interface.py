@@ -42,6 +42,9 @@ class FakeSpotInterface:
     def stop(self) -> str:
         return self._fake("STOP")
 
+    def power_off(self) -> str:
+        return self._fake("POWER_OFF")
+
     def move_forward_short(self) -> str:
         return self._fake("MOVE_FORWARD_SHORT")
 
@@ -72,6 +75,8 @@ class FakeSpotInterface:
             "spot_powered_on": None,
             "spot_estopped": None,
             "spot_lease_status": "",
+            "spot_battery_percentage": None,
+            "spot_battery_status": "",
         }
 
     def close(self) -> None:
@@ -97,6 +102,8 @@ class RealSpotInterface:
         self._lease_status = ""
         self._powered_on: bool | None = None
         self._estopped: bool | None = None
+        self._battery_percentage: float | None = None
+        self._battery_status = ""
         self.state.update(
             fake_spot_mode=False,
             spot_mode="real",
@@ -120,9 +127,24 @@ class RealSpotInterface:
             return False
         return True
 
-    def connect(self) -> dict[str, Any]:
+    def connect(self, force_reconnect: bool = False) -> dict[str, Any]:
         if not self._check_config():
             return self.status()
+
+        if (
+            not force_reconnect
+            and self._connected
+            and self._command_client is not None
+            and self._lease_keepalive is not None
+        ):
+            self._update_robot_state()
+            self._last_error = ""
+            self._available = True
+            self._sync_state()
+            event_logger.event("spot_real_connect_skipped", host=config.spot_host, reason="already_connected")
+            return self.status()
+
+        self._shutdown_lease_keepalive()
 
         try:
             import bosdyn.client
@@ -181,6 +203,33 @@ class RealSpotInterface:
     def stop(self) -> str:
         return self._run_robot_command("STOP", self._stop_command)
 
+    def power_off(self) -> str:
+        if not self.ensure_connected():
+            raise SpotCommandError(self._last_error or "Real Spot unavailable")
+        if self._robot is None or not hasattr(self._robot, "power_off"):
+            raise SpotCommandError("Robot power_off is unavailable")
+        try:
+            self._robot.power_off(cut_immediately=False, timeout_sec=config.spot_command_timeout_s)
+            self._last_action = "POWER_OFF"
+            self._last_action_status = "accepted"
+            self._last_error = ""
+            self._update_robot_state()
+            self._sync_state()
+            event_logger.event("spot_real_action", action="POWER_OFF", status="accepted")
+            return "REAL SPOT: POWER_OFF"
+        except Exception as exc:
+            self._last_action = "POWER_OFF"
+            self._last_action_status = "error"
+            self._set_error(str(exc))
+            event_logger.event("spot_real_action", action="POWER_OFF", status="error", error=str(exc))
+            raise SpotCommandError(str(exc)) from exc
+
+    def rotate_left_short(self) -> str:
+        return self._run_turn_command("ROTATE_LEFT_SHORT", abs(config.spot_real_turn_rate_rad_s))
+
+    def rotate_right_short(self) -> str:
+        return self._run_turn_command("ROTATE_RIGHT_SHORT", -abs(config.spot_real_turn_rate_rad_s))
+
     def status(self) -> dict[str, Any]:
         self._sync_state()
         return {
@@ -194,17 +243,22 @@ class RealSpotInterface:
             "spot_powered_on": self._powered_on,
             "spot_estopped": self._estopped,
             "spot_lease_status": self._lease_status,
+            "spot_battery_percentage": self._battery_percentage,
+            "spot_battery_status": self._battery_status,
         }
 
     def close(self) -> None:
+        self._shutdown_lease_keepalive()
+        self._connected = False
+        self._sync_state()
+
+    def _shutdown_lease_keepalive(self) -> None:
         try:
             if self._lease_keepalive is not None:
                 self._lease_keepalive.shutdown()
         except Exception as exc:
             event_logger.event("spot_real_close_error", error=str(exc))
         self._lease_keepalive = None
-        self._connected = False
-        self._sync_state()
 
     def _run_robot_command(self, action: str, builder, already_connected: bool = False) -> str:
         if not already_connected and not self.ensure_connected():
@@ -217,6 +271,47 @@ class RealSpotInterface:
             self._last_error = ""
             self._sync_state()
             event_logger.event("spot_real_action", action=action, status="accepted")
+            return f"REAL SPOT: {action}"
+        except Exception as exc:
+            self._last_action = action
+            self._last_action_status = "error"
+            self._set_error(str(exc))
+            event_logger.event("spot_real_action", action=action, status="error", error=str(exc))
+            raise SpotCommandError(str(exc)) from exc
+
+    def _run_turn_command(self, action: str, yaw_rate_rad_s: float) -> str:
+        if not self.ensure_connected():
+            raise SpotCommandError(self._last_error or "Real Spot unavailable")
+        self._update_robot_state()
+        if self._powered_on is False:
+            raise SpotCommandError("Robot not powered. Power on and stand before turning.")
+
+        try:
+            from bosdyn.client.robot_command import RobotCommandBuilder
+
+            command = RobotCommandBuilder.synchro_velocity_command(
+                v_x=0.0,
+                v_y=0.0,
+                v_rot=float(yaw_rate_rad_s),
+            )
+            end_time = time.time() + max(0.1, float(config.spot_real_turn_duration_s))
+            timesync_endpoint = getattr(getattr(self._robot, "time_sync", None), "endpoint", None)
+            self._command_client.robot_command(
+                command=command,
+                end_time_secs=end_time,
+                timesync_endpoint=timesync_endpoint,
+            )
+            self._last_action = action
+            self._last_action_status = "accepted"
+            self._last_error = ""
+            self._sync_state()
+            event_logger.event(
+                "spot_real_action",
+                action=action,
+                status="accepted",
+                yaw_rate_rad_s=yaw_rate_rad_s,
+                duration_s=config.spot_real_turn_duration_s,
+            )
             return f"REAL SPOT: {action}"
         except Exception as exc:
             self._last_action = action
@@ -267,8 +362,29 @@ class RealSpotInterface:
             estop_states = getattr(getattr(robot_state, "estop_states", None), "estop_states", None)
             if estop_states is not None:
                 self._estopped = any("ESTOP" in str(state).upper() for state in estop_states)
+            self._update_battery_state(robot_state)
         except Exception as exc:
             event_logger.event("spot_real_status_error", error=str(exc))
+
+    def _update_battery_state(self, robot_state) -> None:
+        battery_states = list(getattr(robot_state, "battery_states", []) or [])
+        if not battery_states:
+            self._battery_percentage = None
+            self._battery_status = ""
+            return
+
+        percentages = []
+        statuses = []
+        for battery in battery_states:
+            percent = _battery_percentage_value(getattr(battery, "charge_percentage", None))
+            if percent is not None:
+                percentages.append(percent)
+            status = str(getattr(battery, "status", "") or "")
+            if status:
+                statuses.append(status)
+
+        self._battery_percentage = min(percentages) if percentages else None
+        self._battery_status = ", ".join(statuses)
 
     def _set_error(self, error: str) -> None:
         self._last_error = error
@@ -288,6 +404,8 @@ class RealSpotInterface:
             spot_powered_on=self._powered_on,
             spot_estopped=self._estopped,
             spot_lease_status=self._lease_status,
+            spot_battery_percentage=self._battery_percentage,
+            spot_battery_status=self._battery_status,
         )
 
 
@@ -295,3 +413,14 @@ def create_spot_interface(state: SharedState):
     if config.spot_mode == "real":
         return RealSpotInterface(state)
     return FakeSpotInterface(state)
+
+
+def _battery_percentage_value(value) -> float | None:
+    if value is None:
+        return None
+    if hasattr(value, "value"):
+        value = value.value
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None

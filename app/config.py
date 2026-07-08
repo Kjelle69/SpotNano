@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import os
 
 
@@ -7,14 +7,17 @@ class Config:
     app_name: str = "Spot Orin Nano"
     app_version: str = os.getenv("APP_VERSION", "v20260707h")
     spot_mode: str = os.getenv("SPOT_MODE", "real" if os.getenv("SPOT_REAL_MODE", "false").lower() == "true" else "fake").lower()
-    spot_host: str = os.getenv("SPOT_HOST", "")
+    spot_host: str = field(default_factory=lambda: os.getenv("SPOT_HOST", "spot-rear"))
     spot_username: str = os.getenv("SPOT_USERNAME", "")
     spot_password: str = os.getenv("SPOT_PASSWORD", "")
     spot_enable_power_on: bool = os.getenv("SPOT_ENABLE_POWER_ON", "false").lower() == "true"
     spot_command_timeout_s: float = float(os.getenv("SPOT_COMMAND_TIMEOUT_S", "10.0"))
     spot_sdk_client_name: str = os.getenv("SPOT_SDK_CLIENT_NAME", "spot-orin-nano")
-    spot_real_allowed_commands: str = os.getenv("SPOT_REAL_ALLOWED_COMMANDS", "SIT,STAND,STOP")
+    spot_real_allowed_commands: str = os.getenv("SPOT_REAL_ALLOWED_COMMANDS", "SIT,STAND,POWER_OFF,MOTION_STOP,APP_ESTOP")
     real_spot_mode: bool = spot_mode == "real"
+    spot_real_turn_rate_rad_s: float = float(os.getenv("SPOT_REAL_TURN_RATE_RAD_S", "0.25"))
+    spot_real_turn_duration_s: float = float(os.getenv("SPOT_REAL_TURN_DURATION_S", "0.6"))
+    spot_real_enable_joystick: bool = os.getenv("SPOT_REAL_ENABLE_JOYSTICK", "false").lower() == "true"
     camera_index: int = int(os.getenv("CAMERA_INDEX", "0"))
     camera_width: int = int(os.getenv("CAMERA_WIDTH", "640"))
     camera_height: int = int(os.getenv("CAMERA_HEIGHT", "480"))
@@ -31,6 +34,7 @@ class Config:
     camera_control_gamma: int = int(os.getenv("CAMERA_CONTROL_GAMMA", "100"))
     camera_control_exposure: int = int(os.getenv("CAMERA_CONTROL_EXPOSURE", "5000"))
     command_rate_limit_s: float = float(os.getenv("COMMAND_RATE_LIMIT_S", "0.4"))
+    real_voice_command_cooldown_s: float = float(os.getenv("REAL_VOICE_COMMAND_COOLDOWN_S", "2.0"))
     approach_timeout_s: float = float(os.getenv("APPROACH_TIMEOUT_S", "10.0"))
     vision_enabled: bool = os.getenv("VISION_ENABLED", "false").lower() == "true"
     vision_model: str = os.getenv("VISION_MODEL", "moondream")
@@ -56,6 +60,7 @@ class Config:
     audio_in_backend: str = os.getenv("AUDIO_IN_BACKEND", "faster_whisper")
     audio_device: str = os.getenv("AUDIO_DEVICE", os.getenv("AUDIO_INPUT_DEVICE", "auto"))
     audio_device_match: str = os.getenv("AUDIO_DEVICE_MATCH", "")
+    audio_channels: int = int(os.getenv("AUDIO_CHANNELS", "1"))
     audio_sample_rate: int = int(os.getenv("AUDIO_SAMPLE_RATE", "16000"))
     whisper_model: str = os.getenv("WHISPER_MODEL", "base.en")
     whisper_language: str = os.getenv("WHISPER_LANGUAGE", "en")
@@ -73,6 +78,11 @@ class Config:
     audio_speech_queue_max: int = int(os.getenv("AUDIO_SPEECH_QUEUE_MAX", "2"))
     audio_inference_wait_timeout_s: float = float(os.getenv("AUDIO_INFERENCE_WAIT_TIMEOUT_S", "10.0"))
     audio_debug_logs: bool = os.getenv("AUDIO_DEBUG_LOGS", "false").lower() == "true"
+    audio_out_suppress_listen_s: float = float(os.getenv("AUDIO_OUT_SUPPRESS_LISTEN_S", "2.0"))
+    audio_direction_noise_gate_rms: float = float(os.getenv("AUDIO_DIRECTION_NOISE_GATE_RMS", "0.01"))
+    audio_direction_db_threshold: float = float(os.getenv("AUDIO_DIRECTION_DB_THRESHOLD", "3.0"))
+    audio_direction_smoothing_chunks: int = int(os.getenv("AUDIO_DIRECTION_SMOOTHING_CHUNKS", "5"))
+    audio_direction_bias_chunks: int = int(os.getenv("AUDIO_DIRECTION_BIAS_CHUNKS", "12"))
     whisper_hotwords: str = os.getenv(
         "WHISPER_HOTWORDS",
         "stop, spot stop, spot sit, spot stand up, spot go, spot forward, spot back, spot left, spot right, spot come",

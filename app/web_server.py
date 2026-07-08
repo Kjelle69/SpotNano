@@ -5,7 +5,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
 from app import audio_out
-from app.audio_in import parse_voice_command, record_mic_test
+from app.audio_in import parse_voice_command, parse_voice_command_with_reason, record_mic_test
 from app.auto_vision import AutoVisionService
 from app.camera import camera
 from app.command_manager import CommandManager
@@ -32,6 +32,10 @@ class VoiceTextRequest(BaseModel):
     text: str
 
 
+class CommandRequest(BaseModel):
+    command: str
+
+
 @router.get("/", response_class=HTMLResponse)
 def index(request: Request) -> HTMLResponse:
     return templates.TemplateResponse("index.html", {"request": request})
@@ -49,6 +53,8 @@ def api_status() -> dict:
     status["audio_input_enabled"] = config.audio_in_enabled
     status["audio_in_backend"] = config.audio_in_backend
     status["bark_sounds"] = audio_out.bark_sound_status()
+    status["spot_real_allowed_commands"] = config.spot_real_allowed_commands
+    status["spot_real_enable_joystick"] = config.spot_real_enable_joystick
     status.update(spot.status())
     return status
 
@@ -73,7 +79,13 @@ def api_logs() -> dict:
 
 @router.post("/api/stop")
 def api_stop() -> JSONResponse:
-    result = command_manager.handle("STOP", source="web")
+    result = command_manager.handle("APP_ESTOP", source="web")
+    return JSONResponse(result.__dict__)
+
+
+@router.post("/api/motion_stop")
+def api_motion_stop() -> JSONResponse:
+    result = command_manager.handle("MOTION_STOP", source="web")
     return JSONResponse(result.__dict__)
 
 
@@ -86,6 +98,12 @@ def api_reset_stop() -> JSONResponse:
 @router.post("/api/command")
 def api_command(command: str = Form(...)) -> JSONResponse:
     result = command_manager.handle(command, source="web")
+    return JSONResponse(result.__dict__)
+
+
+@router.post("/api/command_json")
+def api_command_json(payload: CommandRequest) -> JSONResponse:
+    result = command_manager.handle(payload.command, source="web")
     return JSONResponse(result.__dict__)
 
 
@@ -169,9 +187,14 @@ def api_audio_voice_text(payload: VoiceTextRequest) -> JSONResponse:
 
 def handle_voice_text(text: str, source: str = "voice") -> dict:
     phrase = str(text)
-    command = parse_voice_command(phrase)
-    shared_state.update(last_audio_phrase=phrase, last_parsed_voice_command=command or "")
-    event_logger.event("voice_text", source=source, phrase=phrase, command=command)
+    command, reason = parse_voice_command_with_reason(phrase)
+    shared_state.update(
+        last_audio_phrase=phrase,
+        last_recognized_phrase=phrase,
+        last_parsed_voice_command=command or "",
+        last_rejected_voice_reason="" if command else reason,
+    )
+    event_logger.event("voice_text", source=source, phrase=phrase, command=command, reason=reason)
 
     if command is None:
         return {
@@ -180,6 +203,7 @@ def handle_voice_text(text: str, source: str = "voice") -> dict:
             "parsed_command": None,
             "command_result": None,
             "status": "unrecognized",
+            "reason": reason,
             "message": "No whitelisted voice command found",
         }
 

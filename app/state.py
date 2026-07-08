@@ -16,6 +16,7 @@ class SystemMode(str, Enum):
 class SystemState:
     mode: SystemMode = SystemMode.IDLE
     emergency_stop: bool = False
+    stop_state: str = "clear"
     fake_spot_mode: bool = True
     spot_mode: str = "fake"
     spot_real_available: bool = False
@@ -27,6 +28,8 @@ class SystemState:
     spot_powered_on: bool | None = None
     spot_estopped: bool | None = None
     spot_lease_status: str = ""
+    spot_battery_percentage: float | None = None
+    spot_battery_status: str = ""
     blue_snake_visible: bool = False
     blue_snake_stable: bool = False
     last_vision_raw: str = ""
@@ -38,8 +41,12 @@ class SystemState:
     last_frame_time: float | None = None
     last_audio_phrase: str = ""
     last_parsed_voice_command: str = ""
+    last_rejected_voice_reason: str = ""
+    last_recognized_phrase: str = ""
+    last_accepted_command: str = ""
     audio_input_enabled: bool = False
     audio_in_backend: str = ""
+    audio_channels: int = 1
     audio_input_device: int | str | None = None
     audio_input_device_name: str = ""
     audio_input_max_channels: int | None = None
@@ -48,8 +55,16 @@ class SystemState:
     audio_input_chunk_s: float | None = None
     last_audio_rms: float | None = None
     last_audio_peak: float | None = None
+    audio_left_rms: float | None = None
+    audio_right_rms: float | None = None
+    audio_peak_left: float | None = None
+    audio_peak_right: float | None = None
+    audio_lr_db: float | None = None
+    audio_direction: str = ""
+    audio_direction_confidence: float = 0.0
     audio_activity_active: bool = False
     audio_activity_until: float | None = None
+    audio_out_suppress_until: float | None = None
     audio_queue_length: int = 0
     inference_owner: str = ""
     last_auto_vision_skip_reason: str = ""

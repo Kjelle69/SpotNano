@@ -12,16 +12,10 @@ from app.state import shared_state
 
 
 STOP_COMMANDS = {
-    "stop",
-    "spot stop",
     "emergency stop",
     "spot emergency stop",
     "abort",
     "spot abort",
-    "stop stop",
-    "stop stop stop",
-    "stopp",
-    "spot stopp",
     "nödstopp",
     "nodstopp",
     "avbryt",
@@ -30,22 +24,45 @@ WAKE_WORDS = {"spot", "sport"}
 MAX_TRANSCRIPT_CHARS = 40
 
 COMMAND_AFTER_WAKE = {
-    "stop": "STOP",
+    "stop": "MOTION_STOP",
+    "stopp": "MOTION_STOP",
+    "emergency stop": "APP_ESTOP",
+    "abort": "APP_ESTOP",
     "sit": "SIT",
+    "sitt": "SIT",
     "seat": "SIT",
     "sit down": "SIT",
+    "sätt dig": "SIT",
+    "satt dig": "SIT",
+    "sat dig": "SIT",
     "stand": "STAND",
+    "sta": "STAND",
+    "stå": "STAND",
     "stand up": "STAND",
+    "sta upp": "STAND",
+    "stå upp": "STAND",
+    "res dig": "STAND",
     "go": "MOVE_FORWARD_SHORT",
+    "fram": "MOVE_FORWARD_SHORT",
+    "framat": "MOVE_FORWARD_SHORT",
+    "framåt": "MOVE_FORWARD_SHORT",
     "move forward": "MOVE_FORWARD_SHORT",
     "forward": "MOVE_FORWARD_SHORT",
     "back": "MOVE_BACKWARD_SHORT",
+    "bak": "MOVE_BACKWARD_SHORT",
+    "bakat": "MOVE_BACKWARD_SHORT",
+    "bakåt": "MOVE_BACKWARD_SHORT",
     "move back": "MOVE_BACKWARD_SHORT",
     "move backward": "MOVE_BACKWARD_SHORT",
     "backward": "MOVE_BACKWARD_SHORT",
     "left": "ROTATE_LEFT_SHORT",
+    "vanster": "ROTATE_LEFT_SHORT",
+    "vänster": "ROTATE_LEFT_SHORT",
     "right": "ROTATE_RIGHT_SHORT",
+    "hoger": "ROTATE_RIGHT_SHORT",
+    "höger": "ROTATE_RIGHT_SHORT",
     "come": "APPROACH_BLUE_SNAKE",
+    "kom": "APPROACH_BLUE_SNAKE",
 }
 
 _listener_thread: threading.Thread | None = None
@@ -56,6 +73,10 @@ _recording_lock = threading.Lock()
 _queue_condition = threading.Condition()
 _speech_queue = deque()
 _last_silence_log_time = 0.0
+_last_real_voice_command_time = 0.0
+_direction_bias_samples = deque()
+_direction_smooth_samples = deque()
+_direction_bias_db = 0.0
 
 
 def normalize_text(text: str) -> str:
@@ -66,22 +87,40 @@ def normalize_text(text: str) -> str:
 
 
 def parse_voice_command(text: str) -> str | None:
+    command, _reason = parse_voice_command_with_reason(text)
+    return command
+
+
+def parse_voice_command_with_reason(text: str) -> tuple[str | None, str]:
     normalized = collapse_repeated_words(normalize_text(text))
+    if not normalized:
+        return None, "empty"
+    if has_multiple_voice_commands(normalized):
+        return None, "multiple_commands"
     if normalized in STOP_COMMANDS:
-        return "STOP"
+        return "APP_ESTOP", "accepted"
     if normalized == "come":
-        return "APPROACH_BLUE_SNAKE"
+        return "APPROACH_BLUE_SNAKE", "accepted"
     wake_command = extract_wake_command(normalized)
     if wake_command is None:
-        return None
+        return None, "missing_wake_word"
     command = COMMAND_AFTER_WAKE.get(wake_command)
     if command in ALLOWED_COMMANDS:
-        return command
-    return None
+        return command, "accepted"
+    return None, "unrecognized"
 
 
 def parse_phrase(phrase: str) -> str | None:
     return parse_voice_command(phrase)
+
+
+def has_multiple_voice_commands(text: str) -> bool:
+    words = text.split()
+    wake_count = sum(1 for word in words if word in WAKE_WORDS)
+    if wake_count > 1:
+        return True
+    wake_command = extract_wake_command(text)
+    return wake_command is not None and any(word in {"spot", "sport"} for word in wake_command.split())
 
 
 def collapse_repeated_words(text: str) -> str:
@@ -182,10 +221,11 @@ def _listener_loop(np, sd, device) -> None:
             with _recording_lock:
                 if _mic_test_event.is_set():
                     continue
+                channels = _recording_channels()
                 recording = sd.rec(
                     sample_count,
                     samplerate=config.audio_sample_rate,
-                    channels=1,
+                    channels=channels,
                     dtype="float32",
                     device=device,
                 )
@@ -193,7 +233,16 @@ def _listener_loop(np, sd, device) -> None:
             if _stop_event.is_set():
                 break
 
-            audio = np.asarray(recording, dtype=np.float32).reshape(-1)
+            audio = np.asarray(recording, dtype=np.float32)
+            chunk_end_time = time.time()
+            if _is_audio_input_suppressed(chunk_end_time):
+                continue
+            if audio.ndim == 2 and audio.shape[1] >= 2:
+                update_audio_direction(audio[:, :2], np)
+                audio = stereo_to_mono(audio, np)
+            else:
+                audio = audio.reshape(-1)
+                shared_state.update(audio_channels=1)
             if not _has_audio_level(audio, np):
                 continue
             _queue_speech_chunk(audio)
@@ -310,11 +359,18 @@ def _dequeue_speech_chunk():
 def _handle_phrase(phrase: str, command_callback, phrase_callback) -> None:
     if not phrase:
         return
-    command = parse_voice_command(phrase)
-    event_logger.event("audio_in_recognized", phrase=phrase, command=command)
+    command, reason = parse_voice_command_with_reason(phrase)
+    shared_state.update(last_recognized_phrase=phrase)
+    event_logger.event("audio_in_recognized", phrase=phrase, command=command, reason=reason)
     if command is None:
-        event_logger.event("audio_in_filtered", phrase=phrase)
+        shared_state.update(last_rejected_voice_reason=reason, last_parsed_voice_command="")
+        event_logger.event("audio_in_filtered", phrase=phrase, reason=reason)
         return
+    if _real_voice_command_is_cooling_down(command):
+        shared_state.update(last_rejected_voice_reason="real_voice_cooldown", last_parsed_voice_command="")
+        event_logger.event("audio_in_filtered", phrase=phrase, command=command, reason="real_voice_cooldown")
+        return
+    shared_state.update(last_rejected_voice_reason="", last_parsed_voice_command=command)
     if phrase_callback is not None:
         phrase_callback(phrase)
     if command is not None and command_callback is not None:
@@ -326,6 +382,31 @@ def command_phrases() -> list[str]:
     phrases.update(f"spot {phrase}" for phrase in COMMAND_AFTER_WAKE)
     phrases.add("come")
     return sorted(phrases)
+
+
+def _is_audio_input_suppressed(chunk_end_time: float) -> bool:
+    suppress_until = shared_state.snapshot().get("audio_out_suppress_until")
+    if suppress_until is None:
+        return False
+    if float(chunk_end_time) <= float(suppress_until):
+        event_logger.event("audio_in_suppressed_during_audio_out", chunk_end_time=chunk_end_time, suppress_until=suppress_until)
+        shared_state.update(last_rejected_voice_reason="audio_out_suppression")
+        return True
+    return False
+
+
+def _real_voice_command_is_cooling_down(command: str) -> bool:
+    global _last_real_voice_command_time
+    if config.spot_mode != "real":
+        return False
+    if command not in {"SIT", "STAND", "MOTION_STOP", "APP_ESTOP"}:
+        return False
+    now = time.time()
+    cooldown_s = max(0.0, float(getattr(config, "real_voice_command_cooldown_s", 2.0)))
+    if now - _last_real_voice_command_time < cooldown_s:
+        return True
+    _last_real_voice_command_time = now
+    return False
 
 
 def _sounddevice_device(sd) -> int | str | None:
@@ -368,6 +449,7 @@ def _log_selected_device(sd, selected, requested: str) -> None:
         audio_input_default_samplerate=_safe_float(default_samplerate),
         audio_input_requested_samplerate=config.audio_sample_rate,
         audio_input_chunk_s=config.whisper_chunk_s,
+        audio_channels=_recording_channels(),
     )
     event_logger.event(
         "audio_in_device_selected",
@@ -378,7 +460,12 @@ def _log_selected_device(sd, selected, requested: str) -> None:
         default_samplerate=default_samplerate,
         requested_samplerate=config.audio_sample_rate,
         chunk_s=config.whisper_chunk_s,
+        channels=_recording_channels(),
     )
+
+
+def _recording_channels() -> int:
+    return 2 if int(getattr(config, "audio_channels", 1)) == 2 else 1
 
 
 def _selected_device_info(sd, selected) -> dict:
@@ -442,6 +529,115 @@ def compute_audio_levels(audio, np) -> tuple[float, float]:
     rms = float(np.sqrt(np.mean(np.square(audio))))
     peak = float(np.max(np.abs(audio)))
     return rms, peak
+
+
+def stereo_to_mono(audio, np):
+    data = np.asarray(audio, dtype=np.float32)
+    if data.ndim == 1:
+        return data.reshape(-1)
+    if data.shape[1] < 2:
+        return data.reshape(-1)
+    return data[:, :2].mean(axis=1).astype(np.float32)
+
+
+def update_audio_direction(stereo_audio, np) -> dict:
+    estimate = estimate_stereo_direction(
+        stereo_audio,
+        np,
+        noise_gate_rms=config.audio_direction_noise_gate_rms,
+        db_threshold=config.audio_direction_db_threshold,
+        smoothing_chunks=config.audio_direction_smoothing_chunks,
+        bias_chunks=config.audio_direction_bias_chunks,
+    )
+    shared_state.update(
+        audio_channels=2,
+        audio_left_rms=estimate["left_rms"],
+        audio_right_rms=estimate["right_rms"],
+        audio_peak_left=estimate["peak_left"],
+        audio_peak_right=estimate["peak_right"],
+        audio_lr_db=estimate["lr_db"],
+        audio_direction=estimate["direction"],
+        audio_direction_confidence=estimate["confidence"],
+    )
+    event_logger.event("audio_direction", **estimate)
+    return estimate
+
+
+def estimate_stereo_direction(
+    stereo_audio,
+    np,
+    noise_gate_rms: float = 0.18,
+    db_threshold: float = 0.6,
+    smoothing_chunks: int = 5,
+    bias_chunks: int = 12,
+) -> dict:
+    global _direction_bias_db
+    data = np.asarray(stereo_audio, dtype=np.float32)
+    if data.ndim != 2 or data.shape[1] < 2 or data.size == 0:
+        return _direction_result(0.0, 0.0, 0.0, 0.0, None, "quiet", 0.0)
+
+    left = data[:, 0]
+    right = data[:, 1]
+    left_rms, peak_left = compute_audio_levels(left, np)
+    right_rms, peak_right = compute_audio_levels(right, np)
+    eps = 1e-9
+    raw_lr_db = float(20.0 * np.log10((right_rms + eps) / (left_rms + eps)))
+    level = max(left_rms, right_rms)
+
+    max_bias_chunks = max(1, int(bias_chunks))
+    while len(_direction_bias_samples) > max_bias_chunks:
+        _direction_bias_samples.popleft()
+    if level < noise_gate_rms:
+        _direction_bias_samples.append(raw_lr_db)
+        if _direction_bias_samples:
+            _direction_bias_db = float(np.median(np.asarray(_direction_bias_samples, dtype=np.float32)))
+        return _direction_result(left_rms, right_rms, peak_left, peak_right, 0.0, "quiet", 0.0)
+
+    corrected_lr_db = raw_lr_db - _direction_bias_db
+    max_smoothing_chunks = max(1, int(smoothing_chunks))
+    _direction_smooth_samples.append(corrected_lr_db)
+    while len(_direction_smooth_samples) > max_smoothing_chunks:
+        _direction_smooth_samples.popleft()
+    smoothed_lr_db = float(np.mean(np.asarray(_direction_smooth_samples, dtype=np.float32)))
+
+    threshold = max(0.1, float(db_threshold))
+    if smoothed_lr_db > threshold:
+        direction = "RIGHT"
+    elif smoothed_lr_db < -threshold:
+        direction = "LEFT"
+    else:
+        direction = "CENTER"
+    confidence = min(1.0, abs(smoothed_lr_db) / (threshold * 2.0))
+    if direction == "CENTER":
+        confidence = max(0.0, 1.0 - min(1.0, abs(smoothed_lr_db) / threshold))
+    return _direction_result(left_rms, right_rms, peak_left, peak_right, smoothed_lr_db, direction, confidence)
+
+
+def reset_audio_direction_state() -> None:
+    global _direction_bias_db
+    _direction_bias_samples.clear()
+    _direction_smooth_samples.clear()
+    _direction_bias_db = 0.0
+
+
+def _direction_result(
+    left_rms: float,
+    right_rms: float,
+    peak_left: float,
+    peak_right: float,
+    lr_db: float | None,
+    direction: str,
+    confidence: float,
+) -> dict:
+    return {
+        "left_rms": left_rms,
+        "right_rms": right_rms,
+        "peak_left": peak_left,
+        "peak_right": peak_right,
+        "lr_db": lr_db,
+        "direction": direction,
+        "confidence": float(confidence),
+    }
 
 
 def record_mic_test(duration_s: float = 3.0) -> dict:

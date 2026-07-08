@@ -22,7 +22,7 @@ body {
 }
 
 .shell {
-  width: min(1180px, calc(100vw - 32px));
+  width: min(1440px, calc(100vw - 32px));
   margin: 0 auto;
   padding: 24px 0;
 }
@@ -63,9 +63,22 @@ h2 {
   margin-top: 2px;
 }
 
-.grid {
+.dashboard-grid {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 380px);
+  gap: 16px;
+  align-items: start;
+}
+
+.main-column {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.ai-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
 }
 
@@ -76,11 +89,39 @@ h2 {
   padding: 16px;
 }
 
+.ai-panel,
+.controls {
+  padding: 12px;
+}
+
 .video {
   min-height: 360px;
   display: grid;
   place-items: center;
   background: #080a0d;
+}
+
+.status {
+  position: sticky;
+  top: 16px;
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+}
+
+.ai-panel dl,
+.status dl {
+  font-size: 13px;
+}
+
+.ai-panel h2,
+.joystick-card h2 {
+  font-size: 15px;
+  margin-bottom: 8px;
+}
+
+.ai-panel dl {
+  grid-template-columns: minmax(110px, 0.8fr) minmax(0, 1fr);
+  gap: 6px 10px;
 }
 
 .video img {
@@ -107,7 +148,7 @@ dd {
   overflow-wrap: anywhere;
 }
 
-.commands {
+.controls {
   margin: 16px 0;
 }
 
@@ -145,6 +186,100 @@ button {
   cursor: pointer;
 }
 
+.controls button {
+  min-height: 34px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.joystick-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(160px, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.joystick-card {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #10151c;
+  padding: 12px;
+}
+
+.joystick {
+  position: relative;
+  width: 132px;
+  height: 132px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background:
+    linear-gradient(90deg, transparent 49%, var(--line) 50%, transparent 51%),
+    linear-gradient(0deg, transparent 49%, var(--line) 50%, transparent 51%),
+    #0b1017;
+  touch-action: none;
+}
+
+.joystick-knob {
+  position: absolute;
+  left: calc(50% - 18px);
+  top: calc(50% - 18px);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 4px rgba(47, 184, 198, 0.18);
+}
+
+.joystick-card p {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.direction-meter {
+  margin-top: 12px;
+}
+
+.direction-scale {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+
+.direction-track {
+  position: relative;
+  height: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background:
+    linear-gradient(90deg, rgba(47, 184, 198, 0.25), transparent 45%, rgba(237, 242, 247, 0.18) 50%, transparent 55%, rgba(47, 184, 198, 0.25)),
+    #0b1017;
+}
+
+.direction-needle {
+  position: absolute;
+  top: -5px;
+  left: 50%;
+  width: 4px;
+  height: 24px;
+  border-radius: 3px;
+  background: var(--accent);
+  transform: translateX(-50%);
+}
+
+.direction-meter p {
+  margin-top: 8px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+}
+
 button:hover {
   border-color: var(--accent);
 }
@@ -167,9 +302,16 @@ pre {
 }
 
 @media (max-width: 820px) {
-  .grid,
+  .dashboard-grid,
+  .ai-grid,
+  .joystick-grid,
   dl {
     grid-template-columns: 1fr;
+  }
+
+  .status {
+    position: static;
+    max-height: none;
   }
 
   .topbar {
@@ -184,4 +326,14 @@ pre {
   .voice-test {
     flex-direction: column;
   }
+}
+
+button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.joystick.disabled {
+  opacity: 0.35;
+  pointer-events: none;
 }

@@ -26,6 +26,20 @@ def _log(event_type: str, **fields: Any) -> None:
         event_logger.event(event_type, **fields)
 
 
+def mark_audio_out_active(duration_s: float | None = None) -> float:
+    try:
+        from app.config import config
+        from app.state import shared_state
+
+        duration = config.audio_out_suppress_listen_s if duration_s is None else float(duration_s)
+        until = time.time() + max(0.0, duration)
+        shared_state.update(audio_out_suppress_until=until)
+        _log("audio_out_suppress_listening", duration_s=duration, until=until)
+        return until
+    except Exception:
+        return time.time()
+
+
 def _terminal_bell() -> None:
     sys.stdout.write("\a")
     sys.stdout.flush()
@@ -121,6 +135,7 @@ def _resolve_path(path: str | Path) -> Path:
 
 
 def play_wav(path: str = DEFAULT_WAV_PATH) -> bool:
+    mark_audio_out_active()
     if _spawn_player(path):
         _log("audio_out", action="play_wav", path=path)
         return True
@@ -131,6 +146,7 @@ def play_wav(path: str = DEFAULT_WAV_PATH) -> bool:
 
 
 def play_audio_file(path: str) -> bool:
+    mark_audio_out_active()
     resolved = _resolve_path(path)
     path_text = str(resolved)
     if not resolved.exists():
@@ -145,6 +161,7 @@ def play_audio_file(path: str) -> bool:
 
 def speak(text: str, lang: str = "sv") -> bool:
     phrase = str(text)
+    mark_audio_out_active()
     if shutil.which("espeak-ng"):
         try:
             subprocess.Popen(
